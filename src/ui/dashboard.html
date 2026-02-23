@@ -588,7 +588,6 @@
       <form id="goal-form">
         <textarea id="goal-input" placeholder="Describe what you want to accomplish..." rows="3"></textarea>
         <div class="form-row">
-          <label>Concurrency: <input type="number" id="concurrency" value="8" min="1" max="32"></label>
           <button type="submit" id="submit-btn">Run</button>
         </div>
       </form>
@@ -844,7 +843,7 @@
       var goal = document.getElementById("goal-input").value.trim();
       if (!goal) return;
       resetPanels();
-      var body = { goal: goal, maxConcurrency: parseInt(document.getElementById("concurrency").value, 10) || 8 };
+      var body = { goal: goal };
       document.getElementById("submit-btn").disabled = true;
 
       fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
