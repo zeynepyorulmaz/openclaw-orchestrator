@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { OpenClawAdapter } from "./agents/openclaw-adapter.js";
+import { getConfig } from "./config.js";
 
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled rejection:", reason instanceof Error ? reason.message : reason);
@@ -10,6 +11,7 @@ process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err.message);
 });
 import { Orchestrator } from "./orchestrator.js";
+import { RunStore } from "./persistence/store.js";
 import { DashboardServer } from "./ui/server.js";
 import { setLogLevel } from "./utils/logger.js";
 
@@ -33,9 +35,12 @@ if (dashIdx !== -1 && dashIdx < argv.length - 1) {
   process.argv = [process.argv[0], process.argv[1], ...argv];
 }
 
-const DEFAULT_DASHBOARD = "http://127.0.0.1:3000";
+function defaultDashboardUrl(): string {
+  const { host, port } = getConfig().server;
+  return `http://${host}:${port}`;
+}
 
-async function isDashboardUp(baseUrl: string, timeoutMs = 1500): Promise<boolean> {
+async function isDashboardUp(baseUrl: string, timeoutMs = getConfig().timeouts.healthCheck): Promise<boolean> {
   try {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), timeoutMs);
@@ -60,7 +65,7 @@ async function runViaDashboard(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       goal,
-      maxConcurrency: opts.maxConcurrency ?? 8,
+      maxConcurrency: opts.maxConcurrency ?? getConfig().limits.maxConcurrency,
     }),
   });
   if (!res.ok) {
@@ -69,7 +74,7 @@ async function runViaDashboard(
   }
   const { runId } = (await res.json()) as { runId: string };
   while (true) {
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, getConfig().cli.pollIntervalMs));
     const runRes = await fetch(`${base}/api/runs/${runId}`);
     if (!runRes.ok) throw new Error(`Failed to get run: ${runRes.status}`);
     const run = (await runRes.json()) as {
@@ -115,13 +120,13 @@ program
   .option("-g, --gateway <url...>", "Gateway URLs (ws://host:port)")
   .option("-n, --name <name...>", "Gateway names (paired with --gateway)")
   .option("-t, --token <token...>", "Gateway tokens (paired with --gateway)")
-  .option("-d, --dashboard <url>", "Use dashboard at URL (default: " + DEFAULT_DASHBOARD + ")")
+  .option("-d, --dashboard <url>", "Use dashboard at URL (default: auto from config)")
   .option("--no-dashboard", "Do not try dashboard; connect to gateway directly")
-  .option("-c, --concurrency <n>", "Max parallel tasks", "8")
-  .option("-s, --max-steps <n>", "Max orchestrator steps", "10")
+  .option("-c, --concurrency <n>", "Max parallel tasks", String(getConfig().limits.maxConcurrency))
+  .option("-s, --max-steps <n>", "Max orchestrator steps", String(getConfig().limits.maxSteps))
   .action(async (goal: string, opts) => {
     const tryDashboard = opts.dashboard !== false;
-    const url = typeof opts.dashboard === "string" && opts.dashboard ? opts.dashboard : DEFAULT_DASHBOARD;
+    const url = typeof opts.dashboard === "string" && opts.dashboard ? opts.dashboard : defaultDashboardUrl();
 
     if (tryDashboard) {
       if (await isDashboardUp(url)) {
@@ -248,8 +253,8 @@ program
   .option("-g, --gateway <url...>", "Gateway URLs (ws://host:port)")
   .option("-n, --name <name...>", "Gateway names (paired with --gateway)")
   .option("-t, --token <token...>", "Gateway tokens (paired with --gateway)")
-  .option("-p, --port <port>", "Dashboard port", "3000")
-  .option("--host <host>", "Dashboard host", "127.0.0.1")
+  .option("-p, --port <port>", "Dashboard port", String(getConfig().server.port))
+  .option("--host <host>", "Dashboard host", getConfig().server.host)
   .action(async (opts) => {
     const orch = buildOrchestrator(opts);
     const gwNames = orch.gateways.names();
@@ -265,10 +270,12 @@ program
       }
     }
 
+    const runStore = new RunStore();
     const dashboard = new DashboardServer({
       orchestrator: orch,
       port: Number(opts.port),
       host: opts.host,
+      runStore,
     });
 
     const addr = await dashboard.start();
@@ -283,6 +290,7 @@ program
 
     process.on("SIGINT", () => {
       dashboard.stop();
+      runStore.close();
       orch.shutdown();
       process.exit(0);
     });

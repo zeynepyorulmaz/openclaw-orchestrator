@@ -1,3 +1,4 @@
+import { ValidationError } from "../errors.js";
 import type { AgentAdapter } from "./adapter.js";
 
 export class AgentRegistry {
@@ -5,7 +6,7 @@ export class AgentRegistry {
 
   add(agent: AgentAdapter): void {
     if (this.agents.has(agent.name)) {
-      throw new Error(`Agent "${agent.name}" already registered`);
+      throw new ValidationError("DUPLICATE_REGISTRATION", `Agent "${agent.name}" already registered`);
     }
     this.agents.set(agent.name, agent);
   }

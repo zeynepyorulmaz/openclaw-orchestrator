@@ -1,11 +1,10 @@
 import type { AgentRegistry } from "../agents/registry.js";
+import { getConfig } from "../config.js";
 import { isComplete, readyNodes, skipDownstream } from "../planner/task-graph.js";
 import type { TaskGraph, TaskNode, TaskResult } from "../planner/types.js";
 import { log } from "../utils/logger.js";
 import { withRetry } from "../utils/retry.js";
 import type { ExecutionOptions, ExecutionResult } from "./types.js";
-
-const DEFAULT_MAX_CONCURRENCY = 8;
 
 export class Executor {
   private agents: AgentRegistry;
@@ -16,7 +15,7 @@ export class Executor {
 
   async execute(graph: TaskGraph, opts?: ExecutionOptions): Promise<ExecutionResult> {
     const start = Date.now();
-    const maxConcurrency = opts?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
+    const maxConcurrency = opts?.maxConcurrency ?? getConfig().limits.maxConcurrency;
     const nodeResults: Record<string, TaskResult> = {};
 
     while (!isComplete(graph)) {

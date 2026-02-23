@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ValidationError } from "../errors.js";
 import type { TaskGraph, TaskNode } from "./types.js";
 
 /** Create a new task graph from a goal and a list of nodes. */
@@ -25,17 +26,17 @@ export function validate(graph: TaskGraph): void {
   for (const node of graph.nodes) {
     for (const dep of node.dependsOn) {
       if (!ids.has(dep)) {
-        throw new Error(`Node "${node.id}" depends on unknown node "${dep}"`);
+        throw new ValidationError("GRAPH_INVALID", `Node "${node.id}" depends on unknown node "${dep}"`);
       }
     }
     if (node.dependsOn.includes(node.id)) {
-      throw new Error(`Node "${node.id}" depends on itself`);
+      throw new ValidationError("GRAPH_INVALID", `Node "${node.id}" depends on itself`);
     }
   }
 
   // Check for cycles via DFS
   if (hasCycle(graph)) {
-    throw new Error("Task graph contains a cycle");
+    throw new ValidationError("GRAPH_INVALID", "Task graph contains a cycle");
   }
 }
 

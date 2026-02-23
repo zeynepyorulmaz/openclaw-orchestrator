@@ -1,3 +1,30 @@
+// Config
+export { getConfig, configure, resetConfig, defaults } from "./config.js";
+export type { OrchestratorConfig } from "./config.js";
+
+// Errors
+export {
+  OrchestratorError,
+  ParseError,
+  ValidationError,
+  GatewayError,
+  AgentError,
+  ConfigError,
+} from "./errors.js";
+export type { ErrorCode } from "./errors.js";
+
+// Schemas
+export {
+  parseOrThrow,
+  SubmitGoalRequestSchema,
+  OrchestratorActionSchema,
+  PlannerResponseSchema,
+  GatewayConfigSchema,
+} from "./schemas.js";
+
+// Persistence
+export { RunStore } from "./persistence/store.js";
+
 // Core
 export { Orchestrator } from "./orchestrator.js";
 export type {

@@ -1,3 +1,4 @@
+import { getConfig } from "../config.js";
 import type { TaskNode, TaskResult } from "../planner/types.js";
 import { log } from "../utils/logger.js";
 import type { AgentAdapter } from "./adapter.js";
@@ -27,7 +28,7 @@ export class FunctionAdapter implements AgentAdapter {
     this.fn = opts.fn;
     this.description = opts.description;
     this.capabilities = opts.capabilities;
-    this.timeout = opts.timeout ?? 60_000;
+    this.timeout = opts.timeout ?? getConfig().timeouts.adapterDefault;
   }
 
   async execute(task: TaskNode): Promise<TaskResult> {

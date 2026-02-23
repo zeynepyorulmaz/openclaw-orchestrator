@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { GatewayClient } from "../gateway/client.js";
 import type { AgentAdapter } from "../agents/adapter.js";
+import { AgentError, ConfigError, ParseError } from "../errors.js";
+import { parseOrThrow, PlannerResponseSchema } from "../schemas.js";
 import { log } from "../utils/logger.js";
 import { createTaskGraph } from "./task-graph.js";
 import type { TaskGraph, TaskNode } from "./types.js";
@@ -81,7 +83,7 @@ export class Planner {
         status: "pending",
       });
       if (result.status !== "ok") {
-        throw new Error(`Planner agent failed: ${result.output}`);
+        throw new AgentError(`Planner agent failed: ${result.output}`);
       }
       return result.output;
     }
@@ -92,7 +94,7 @@ export class Planner {
       });
     }
 
-    throw new Error("No LLM source configured. Provide a gateway or plannerAgent.");
+    throw new ConfigError("No LLM source configured. Provide a gateway or plannerAgent.");
   }
 
   private parseResponse(raw: string): PlannerLlmResponse {
@@ -104,26 +106,9 @@ export class Planner {
       parsed = JSON.parse(cleaned);
     } catch (err) {
       log.error("Failed to parse planner response", { raw: raw.slice(0, 500) });
-      throw new Error(`Planner returned invalid JSON: ${err}`);
+      throw new ParseError(`Planner returned invalid JSON: ${err}`);
     }
 
-    if (!Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
-      throw new Error("Planner returned empty or invalid nodes array");
-    }
-
-    // Validate each node has required fields
-    for (const node of parsed.nodes) {
-      if (!node.id || typeof node.id !== "string") {
-        throw new Error(`Node missing valid "id": ${JSON.stringify(node)}`);
-      }
-      if (!node.task || typeof node.task !== "string") {
-        throw new Error(`Node "${node.id}" missing valid "task"`);
-      }
-      if (!Array.isArray(node.dependsOn)) {
-        node.dependsOn = [];
-      }
-    }
-
-    return parsed;
+    return parseOrThrow(PlannerResponseSchema, parsed, "Planner response");
   }
 }

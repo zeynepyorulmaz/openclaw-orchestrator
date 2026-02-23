@@ -42,10 +42,13 @@
     "url": "https://github.com/zeynepyorulmaz/openclaw-orchestrator/issues"
   },
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "commander": "^13.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "typescript": "^5.9.0",

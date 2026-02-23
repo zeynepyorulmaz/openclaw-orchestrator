@@ -3,17 +3,20 @@ import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { getConfig } from "../config.js";
 import type { Orchestrator } from "../orchestrator.js";
+import type { RunStore } from "../persistence/store.js";
+import { SubmitGoalRequestSchema } from "../schemas.js";
 import { log } from "../utils/logger.js";
 import type { RunStatus, SSEEvent, SubmitGoalRequest } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAX_RUNS = 50;
 
 export type DashboardServerOptions = {
   orchestrator: Orchestrator;
   port?: number;
   host?: string;
+  runStore?: RunStore;
 };
 
 export class DashboardServer {
@@ -22,13 +25,15 @@ export class DashboardServer {
   private host: string;
   private server: Server | null = null;
   private runs = new Map<string, RunStatus>();
+  private runStore?: RunStore;
   private sseClients = new Set<ServerResponse>();
   private htmlCache: string | null = null;
 
   constructor(opts: DashboardServerOptions) {
     this.orchestrator = opts.orchestrator;
-    this.port = opts.port ?? 3000;
-    this.host = opts.host ?? "127.0.0.1";
+    this.port = opts.port ?? getConfig().server.port;
+    this.host = opts.host ?? getConfig().server.host;
+    this.runStore = opts.runStore;
   }
 
   async start(): Promise<{ port: number; host: string }> {
@@ -143,12 +148,16 @@ export class DashboardServer {
   }
 
   private handleListRuns(res: ServerResponse): void {
-    const runs = [...this.runs.values()].sort((a, b) => b.startedAt - a.startedAt);
-    json(res, 200, runs);
+    if (this.runStore) {
+      json(res, 200, this.runStore.list());
+    } else {
+      const runs = [...this.runs.values()].sort((a, b) => b.startedAt - a.startedAt);
+      json(res, 200, runs);
+    }
   }
 
   private handleGetRun(res: ServerResponse, runId: string): void {
-    const run = this.runs.get(runId);
+    const run = this.runs.get(runId) ?? this.runStore?.get(runId);
     if (!run) {
       json(res, 404, { error: "Run not found" });
       return;
@@ -158,18 +167,21 @@ export class DashboardServer {
 
   private async handleSubmitGoal(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readBody(req);
-    let request: SubmitGoalRequest;
+    let raw: unknown;
     try {
-      request = JSON.parse(body);
+      raw = JSON.parse(body);
     } catch {
       json(res, 400, { error: "Invalid JSON body" });
       return;
     }
 
-    if (!request.goal?.trim()) {
-      json(res, 400, { error: "Missing 'goal' field" });
+    const result = SubmitGoalRequestSchema.safeParse(raw);
+    if (!result.success) {
+      const msg = result.error.issues.map((i) => i.message).join("; ");
+      json(res, 400, { error: msg });
       return;
     }
+    const request: SubmitGoalRequest = result.data;
 
     const runId = randomUUID();
     const run: RunStatus = {
@@ -180,7 +192,7 @@ export class DashboardServer {
       startedAt: Date.now(),
     };
 
-    if (this.runs.size >= MAX_RUNS) {
+    if (this.runs.size >= getConfig().limits.maxRuns) {
       const oldest = [...this.runs.keys()][0];
       this.runs.delete(oldest);
     }
@@ -193,8 +205,17 @@ export class DashboardServer {
     });
   }
 
+  private persistRun(run: RunStatus): void {
+    try {
+      this.runStore?.update(run);
+    } catch (err) {
+      log.error("Failed to persist run", { runId: run.runId, error: String(err) });
+    }
+  }
+
   private async executeRun(runId: string, request: SubmitGoalRequest): Promise<void> {
     const run = this.runs.get(runId)!;
+    this.persistRun(run);
 
     try {
       this.broadcastSSE({ type: "run:started", runId, goal: request.goal });
@@ -247,6 +268,7 @@ export class DashboardServer {
           },
           onStepEnd: (stepNumber) => {
             this.broadcastSSE({ type: "step:ended", runId, stepNumber });
+            this.persistRun(run);
           },
           onFinish: (answer) => {
             run.finalAnswer = answer;
@@ -258,12 +280,14 @@ export class DashboardServer {
               answer,
               durationMs: run.finishedAt - run.startedAt,
             });
+            this.persistRun(run);
           },
           onError: (error) => {
             run.state = "error";
             run.error = error;
             run.finishedAt = Date.now();
             this.broadcastSSE({ type: "run:error", runId, error });
+            this.persistRun(run);
           },
         },
       );
@@ -280,6 +304,7 @@ export class DashboardServer {
       run.error = String(err);
       run.finishedAt = Date.now();
       this.broadcastSSE({ type: "run:error", runId, error: String(err) });
+      this.persistRun(run);
     }
   }
 

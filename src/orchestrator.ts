@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { AgentAdapter } from "./agents/adapter.js";
 import { AgentRegistry } from "./agents/registry.js";
+import { getConfig } from "./config.js";
+import { ParseError, ValidationError } from "./errors.js";
+import { OrchestratorActionSchema } from "./schemas.js";
 import { GatewayRegistry } from "./gateway/registry.js";
 import type { GatewayConfig } from "./gateway/types.js";
 import type { TaskResult } from "./planner/types.js";
 import { log } from "./utils/logger.js";
-
-const MAX_STEPS = 10;
 
 function buildSystemPrompt(agents: AgentAdapter[]): string {
   const hasMultipleAgents = agents.length > 1;
@@ -128,8 +129,9 @@ export class Orchestrator {
       startedAt: Date.now(),
     };
 
-    const maxSteps = opts?.maxSteps ?? MAX_STEPS;
-    const maxConcurrency = opts?.maxConcurrency ?? 8;
+    const { maxSteps: defaultMaxSteps, maxConcurrency: defaultMaxConcurrency } = getConfig().limits;
+    const maxSteps = opts?.maxSteps ?? defaultMaxSteps;
+    const maxConcurrency = opts?.maxConcurrency ?? defaultMaxConcurrency;
 
     try {
       for (let i = 0; i < maxSteps; i++) {
@@ -259,9 +261,10 @@ export class Orchestrator {
         for (const task of step.tasks) {
           ctx += `- **${task.id}** [${task.status}]: ${task.task}\n`;
           if (task.result) {
+            const maxLen = getConfig().limits.outputTruncation;
             const output =
-              task.result.output.length > 3000
-                ? task.result.output.slice(0, 3000) + "...(truncated)"
+              task.result.output.length > maxLen
+                ? task.result.output.slice(0, maxLen) + "...(truncated)"
                 : task.result.output;
             ctx += `  Output: ${output}\n`;
           }
@@ -306,7 +309,7 @@ export class Orchestrator {
           if (salvaged) return salvaged;
 
           log.error("Failed to parse orchestrator action", { raw: raw.slice(0, 500) });
-          throw new Error(`Orchestrator returned invalid JSON`);
+          throw new ParseError(`Orchestrator returned invalid JSON`);
         }
       } else {
         // No {…} found at all — JSON may be truncated without a closing brace
@@ -314,23 +317,22 @@ export class Orchestrator {
         if (salvaged) return salvaged;
 
         log.error("Failed to parse orchestrator action", { raw: raw.slice(0, 500) });
-        throw new Error("Orchestrator returned no JSON object");
+        throw new ParseError("Orchestrator returned no JSON object");
       }
     }
 
-    if (parsed.action === "execute") {
-      if (!Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
-        throw new Error("Orchestrator returned execute with no tasks");
+    const result = OrchestratorActionSchema.safeParse(parsed);
+    if (!result.success) {
+      // Map Zod errors to the legacy messages tests expect
+      const raw_action = (parsed as Record<string, unknown>).action;
+      if (raw_action !== "execute" && raw_action !== "finish") {
+        throw new ValidationError("VALIDATION_FAILED", `Unknown orchestrator action: ${raw_action}`);
       }
-    } else if (parsed.action === "finish") {
-      if (!parsed.answer) {
-        throw new Error("Orchestrator returned finish with no answer");
-      }
-    } else {
-      throw new Error(`Unknown orchestrator action: ${(parsed as Record<string, unknown>).action}`);
+      const msg = result.error.issues.map((i) => i.message).join("; ");
+      throw new ValidationError("VALIDATION_FAILED", msg);
     }
 
-    return parsed;
+    return result.data;
   }
 
   /** Try to extract a usable answer from truncated JSON (e.g. gateway cut off the response). */

@@ -1,20 +1,19 @@
+import { getConfig } from "../config.js";
+
 export type RetryOptions = {
   maxAttempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
 };
 
-const DEFAULTS: Required<RetryOptions> = {
-  maxAttempts: 3,
-  baseDelayMs: 500,
-  maxDelayMs: 10_000,
-};
-
 export async function withRetry<T>(
   fn: () => Promise<T>,
   opts?: RetryOptions,
 ): Promise<T> {
-  const { maxAttempts, baseDelayMs, maxDelayMs } = { ...DEFAULTS, ...opts };
+  const cfg = getConfig().retry;
+  const maxAttempts = opts?.maxAttempts ?? cfg.maxAttempts;
+  const baseDelayMs = opts?.baseDelayMs ?? cfg.baseDelayMs;
+  const maxDelayMs = opts?.maxDelayMs ?? cfg.maxDelayMs;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

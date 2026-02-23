@@ -1,3 +1,6 @@
+import { getConfig } from "../config.js";
+import { ConfigError, GatewayError, ValidationError } from "../errors.js";
+import { GatewayConfigSchema, parseOrThrow } from "../schemas.js";
 import { log } from "../utils/logger.js";
 import { GatewayClient } from "./client.js";
 import type { GatewayConfig, GatewayHealth } from "./types.js";
@@ -6,8 +9,9 @@ export class GatewayRegistry {
   private clients = new Map<string, GatewayClient>();
 
   add(config: GatewayConfig): GatewayClient {
+    parseOrThrow(GatewayConfigSchema, config, "Gateway config");
     if (this.clients.has(config.name)) {
-      throw new Error(`Gateway "${config.name}" already registered`);
+      throw new ValidationError("DUPLICATE_REGISTRATION", `Gateway "${config.name}" already registered`);
     }
     const client = new GatewayClient(config);
     this.clients.set(config.name, client);
@@ -64,13 +68,13 @@ export class GatewayRegistry {
     return results;
   }
 
-  private static readonly CONNECT_ATTEMPTS = 3;
-  private static readonly CONNECT_RETRY_DELAY_MS = 2000;
+  private static get CONNECT_ATTEMPTS() { return getConfig().retry.maxAttempts; }
+  private static get CONNECT_RETRY_DELAY_MS() { return getConfig().retry.connectDelayMs; }
 
   /** Pick a connected gateway, optionally preferring one by name. Uses connect() not health() so gateways that don't implement "health" still work. Retries on failure. */
   async pick(preferred?: string): Promise<GatewayClient> {
     if (this.clients.size === 0) {
-      throw new Error(
+      throw new ConfigError(
         "No gateways configured. Start the server with -g <url> and -t <token>, e.g. serve -g 'ws://host:port/' -t YOUR_TOKEN",
       );
     }
@@ -110,7 +114,8 @@ export class GatewayRegistry {
     }
 
     const detail = lastError?.message ?? "unknown";
-    throw new Error(
+    throw new GatewayError(
+      "GATEWAY_CONNECTION_FAILED",
       `Could not connect to any gateway after ${GatewayRegistry.CONNECT_ATTEMPTS} attempt(s). Last error: ${detail}. Check that the gateway is reachable and the token is valid.`,
     );
   }

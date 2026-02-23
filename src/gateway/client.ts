@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import WebSocket from "ws";
+import { getConfig } from "../config.js";
+import { GatewayError } from "../errors.js";
 import { log } from "../utils/logger.js";
 import type {
   EventFrame,
@@ -10,9 +12,6 @@ import type {
   GatewayFrame,
   ResponseFrame,
 } from "./types.js";
-
-const PROTOCOL_VERSION = 3;
-const DEFAULT_TIMEOUT_MS = 30_000;
 const DEVICE_IDENTITY_DIR = join(homedir(), ".openclaw-orchestrator");
 const DEVICE_IDENTITY_FILE = join(DEVICE_IDENTITY_DIR, "device-identity.json");
 
@@ -231,9 +230,9 @@ export class GatewayClient {
       const timeout = setTimeout(() => {
         settle(() => {
           ws.close();
-          reject(new Error(`Connection to ${this.config.name} timed out`));
+          reject(new GatewayError("GATEWAY_TIMEOUT", `Connection to ${this.config.name} timed out`));
         });
-      }, DEFAULT_TIMEOUT_MS);
+      }, getConfig().timeouts.gatewayDefault);
 
       const sendConnect = (nonce?: string) => {
         if (connectSent) return;
@@ -256,8 +255,8 @@ export class GatewayClient {
 
         const connectId = randomUUID();
         const connectParams = {
-          minProtocol: PROTOCOL_VERSION,
-          maxProtocol: PROTOCOL_VERSION,
+          minProtocol: getConfig().protocol.version,
+          maxProtocol: getConfig().protocol.version,
           client: { id: clientId, version: "0.1.0", platform: process.platform, mode: clientMode },
           role,
           scopes,
@@ -357,7 +356,7 @@ export class GatewayClient {
     });
   }
 
-  async call<T = unknown>(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  async call<T = unknown>(method: string, params?: unknown, timeoutMs = getConfig().timeouts.gatewayDefault): Promise<T> {
     if (!this.connected) {
       await this.connect();
     }
@@ -368,7 +367,7 @@ export class GatewayClient {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Request ${method} timed out after ${timeoutMs}ms`));
+        reject(new GatewayError("GATEWAY_TIMEOUT", `Request ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.pending.set(id, {
@@ -392,7 +391,7 @@ export class GatewayClient {
       p.resolve(frame.payload);
     } else {
       const err = frame.error;
-      p.reject(new Error(err ? `${err.code}: ${err.message}` : "Unknown gateway error"));
+      p.reject(new GatewayError("GATEWAY_PROTOCOL_ERROR", err ? `${err.code}: ${err.message}` : "Unknown gateway error"));
     }
   }
 
@@ -434,7 +433,7 @@ export class GatewayClient {
   async chat(message: string, opts?: { sessionKey?: string; timeoutMs?: number; agentId?: string }): Promise<string> {
     if (!this.connected) await this.connect();
 
-    const timeoutMs = opts?.timeoutMs ?? 120_000;
+    const timeoutMs = opts?.timeoutMs ?? getConfig().timeouts.chat;
     const baseKey = opts?.sessionKey ?? "orchestrator";
     // Prefix session key with agent:<id>: so the gateway routes to the correct agent
     const sessionKey = opts?.agentId ? `agent:${opts.agentId}:${baseKey}` : baseKey;
@@ -450,14 +449,14 @@ export class GatewayClient {
 
     const runId = ack?.runId;
     if (!runId) {
-      throw new Error("chat.send did not return a runId");
+      throw new GatewayError("GATEWAY_PROTOCOL_ERROR", "chat.send did not return a runId");
     }
 
     // Register in pendingChats keyed by runId — handleChatEvent will resolve/reject
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingChats.delete(runId);
-        reject(new Error(`Chat response timed out after ${timeoutMs}ms`));
+        reject(new GatewayError("GATEWAY_TIMEOUT", `Chat response timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.pendingChats.set(runId, { resolve, reject, timer });
