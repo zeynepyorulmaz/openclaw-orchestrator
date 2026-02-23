@@ -435,12 +435,10 @@ export class GatewayClient {
     if (!this.connected) await this.connect();
 
     const timeoutMs = opts?.timeoutMs ?? 120_000;
-    const sessionKey = opts?.sessionKey ?? "orchestrator";
+    const baseKey = opts?.sessionKey ?? "orchestrator";
+    // Prefix session key with agent:<id>: so the gateway routes to the correct agent
+    const sessionKey = opts?.agentId ? `agent:${opts.agentId}:${baseKey}` : baseKey;
 
-    // Send chat.send and get the runId
-    // Note: agentId is accepted by the opts signature for future gateway versions
-    // that support per-message agent targeting, but is not sent on the wire yet
-    // because current gateways reject unknown properties.
     const params: Record<string, unknown> = {
       message,
       sessionKey,
