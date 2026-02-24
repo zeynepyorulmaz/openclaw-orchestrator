@@ -2,7 +2,9 @@ import type { AgentRegistry } from "../agents/registry.js";
 import { getConfig } from "../config.js";
 import { isComplete, readyNodes, skipDownstream } from "../planner/task-graph.js";
 import type { TaskGraph, TaskNode, TaskResult } from "../planner/types.js";
+import { Cache, taskCache } from "../utils/cache.js";
 import { log } from "../utils/logger.js";
+import { agentRateLimiters } from "../utils/rate-limiter.js";
 import { withRetry } from "../utils/retry.js";
 import type { ExecutionOptions, ExecutionResult } from "./types.js";
 
@@ -94,10 +96,32 @@ export class Executor {
 
     log.info(`Dispatching "${node.id}" to agent "${agent.name}"`);
 
-    const retries = node.config?.retries ?? 0;
-    if (retries > 0) {
-      return withRetry(() => agent.execute(node), { maxAttempts: retries + 1 });
+    const cfg = getConfig();
+
+    // Cache check — skip execution if we have a fresh result for this task+agent
+    const cacheKey = Cache.taskKey(node.task, agent.name);
+    if (cfg.cache.enabled) {
+      const cached = taskCache.get(cacheKey);
+      if (cached !== undefined) {
+        log.debug(`Cache hit for task "${node.id}" (agent: ${agent.name})`);
+        return { status: "ok", output: cached };
+      }
     }
-    return agent.execute(node);
+
+    // Rate limiting — throttle per-agent call rate
+    if (cfg.rateLimit.enabled) {
+      await agentRateLimiters.acquire(agent.name);
+    }
+
+    const run = (): Promise<TaskResult> => agent.execute(node);
+    const retries = node.config?.retries ?? 0;
+    const result = await (retries > 0 ? withRetry(run, { maxAttempts: retries + 1 }) : run());
+
+    // Store successful result in cache
+    if (cfg.cache.enabled && result.status === "ok") {
+      taskCache.set(cacheKey, result.output);
+    }
+
+    return result;
   }
 }

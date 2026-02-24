@@ -1,3 +1,4 @@
+import { getConfig } from "../config.js";
 import { log } from "./logger.js";
 
 export type RateLimiterOptions = {
@@ -237,8 +238,8 @@ export class RateLimiterRegistry {
  * Global rate limiter registry for agents.
  */
 export const agentRateLimiters = new RateLimiterRegistry({
-  maxRequests: 10,
+  maxRequests: getConfig().rateLimit.maxRequestsPerSecond,
   windowMs: 1000,
-  queueExcess: true,
-  maxQueueSize: 50,
+  queueExcess: getConfig().rateLimit.queueExcess,
+  maxQueueSize: getConfig().rateLimit.maxQueueSize,
 });

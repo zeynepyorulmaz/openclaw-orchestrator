@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getConfig } from "../config.js";
 import { log } from "./logger.js";
 
 export type CacheEntry<T> = {
@@ -168,6 +169,6 @@ export class Cache<T> {
  * Can be used across the application for caching agent outputs.
  */
 export const taskCache = new Cache<string>({
-  ttlMs: 10 * 60 * 1000, // 10 minutes
-  maxEntries: 500,
+  ttlMs: getConfig().cache.ttlMs,
+  maxEntries: getConfig().cache.maxEntries,
 });
