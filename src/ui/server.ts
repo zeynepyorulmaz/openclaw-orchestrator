@@ -79,7 +79,7 @@ export class DashboardServer {
 
     // CORS
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (method === "OPTIONS") {
@@ -113,6 +113,14 @@ export class DashboardServer {
       return this.handleGetRun(res, runMatch[1]);
     }
 
+    if (method === "DELETE" && runMatch) {
+      return this.handleDeleteRun(res, runMatch[1]);
+    }
+
+    if (method === "GET" && pathname === "/api/agents/health") {
+      return this.handleAgentsHealth(res);
+    }
+
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
   }
@@ -128,9 +136,15 @@ export class DashboardServer {
       type: a.type,
       description: a.description,
       capabilities: a.capabilities,
+      health: this.orchestrator.agents.getCachedHealth(a.name),
     }));
     const gateways = this.orchestrator.gateways.names();
     json(res, 200, { ok: true, agents, gateways });
+  }
+
+  private async handleAgentsHealth(res: ServerResponse): Promise<void> {
+    const health = await this.orchestrator.agents.checkAllHealth();
+    json(res, 200, { agents: health });
   }
 
   private handleSSE(req: IncomingMessage, res: ServerResponse): void {
@@ -163,6 +177,24 @@ export class DashboardServer {
       return;
     }
     json(res, 200, run);
+  }
+
+  private handleDeleteRun(res: ServerResponse, runId: string): void {
+    // Delete from in-memory cache
+    const inMemory = this.runs.delete(runId);
+    
+    // Delete from persistent store
+    const fromStore = this.runStore?.delete(runId) ?? false;
+    
+    if (!inMemory && !fromStore) {
+      json(res, 404, { error: "Run not found" });
+      return;
+    }
+    
+    // Broadcast deletion event
+    this.broadcastSSE({ type: "run:deleted", runId });
+    
+    json(res, 200, { deleted: true, runId });
   }
 
   private async handleSubmitGoal(req: IncomingMessage, res: ServerResponse): Promise<void> {

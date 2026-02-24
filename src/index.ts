@@ -45,6 +45,7 @@ export type { GatewayConfig, GatewayHealth } from "./gateway/types.js";
 // Agents
 export type { AgentAdapter } from "./agents/adapter.js";
 export { AgentRegistry } from "./agents/registry.js";
+export type { AgentHealth } from "./agents/registry.js";
 export { OpenClawAdapter } from "./agents/openclaw-adapter.js";
 export type { OpenClawAdapterOptions } from "./agents/openclaw-adapter.js";
 export { HttpAdapter } from "./agents/http-adapter.js";
@@ -62,3 +63,7 @@ export type { DashboardServerOptions } from "./ui/server.js";
 // Utils
 export { log, setLogLevel } from "./utils/logger.js";
 export { withRetry } from "./utils/retry.js";
+export { Cache, taskCache } from "./utils/cache.js";
+export type { CacheOptions, CacheEntry } from "./utils/cache.js";
+export { RateLimiter, RateLimiterRegistry, agentRateLimiters } from "./utils/rate-limiter.js";
+export type { RateLimiterOptions } from "./utils/rate-limiter.js";

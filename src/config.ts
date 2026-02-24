@@ -18,6 +18,17 @@ export type OrchestratorConfig = {
     maxRuns: number;
     outputTruncation: number;
   };
+  cache: {
+    enabled: boolean;
+    ttlMs: number;
+    maxEntries: number;
+  };
+  rateLimit: {
+    enabled: boolean;
+    maxRequestsPerSecond: number;
+    queueExcess: boolean;
+    maxQueueSize: number;
+  };
   server: {
     port: number;
     host: string;
@@ -53,6 +64,17 @@ const DEFAULTS: OrchestratorConfig = {
     maxSteps: 10,
     maxRuns: 50,
     outputTruncation: 3_000,
+  },
+  cache: {
+    enabled: true,
+    ttlMs: 10 * 60 * 1000, // 10 minutes
+    maxEntries: 500,
+  },
+  rateLimit: {
+    enabled: true,
+    maxRequestsPerSecond: 10,
+    queueExcess: true,
+    maxQueueSize: 50,
   },
   server: {
     port: 3000,

@@ -62,6 +62,24 @@ export class RunStore {
     return rows.map(rowToRunStatus);
   }
 
+  /** Delete a specific run by ID. Returns true if deleted. */
+  delete(runId: string): boolean {
+    const result = this.db.prepare("DELETE FROM runs WHERE run_id = ?").run(runId);
+    return result.changes > 0;
+  }
+
+  /** Delete all runs. Returns count of deleted runs. */
+  deleteAll(): number {
+    const result = this.db.prepare("DELETE FROM runs").run();
+    return result.changes;
+  }
+
+  /** Delete runs older than a given timestamp. */
+  deleteOlderThan(timestamp: number): number {
+    const result = this.db.prepare("DELETE FROM runs WHERE started_at < ?").run(timestamp);
+    return result.changes;
+  }
+
   close(): void {
     this.db.close();
   }

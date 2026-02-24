@@ -833,6 +833,36 @@
       border-color: rgba(139, 92, 246, 0.15);
     }
 
+    .history-delete-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .history-item:hover .history-delete-btn {
+      opacity: 1;
+    }
+
+    .history-delete-btn:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--failed);
+    }
+
+    .history-delete-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
     /* ---- Scrollbar ---- */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -933,6 +963,16 @@
     }
 
     function handleEvent(event) {
+      // Handle run:deleted for any run (not just current)
+      if (event.type === "run:deleted") {
+        if (event.runId === currentRunId) {
+          currentRunId = null;
+          resetPanels();
+        }
+        updateHistory();
+        return;
+      }
+
       if (event.runId !== currentRunId) return;
       switch (event.type) {
         case "run:started":
@@ -1191,6 +1231,19 @@
           item.appendChild(stateSpan);
           item.appendChild(goalSpan);
           item.appendChild(timeSpan);
+
+          var deleteBtn = document.createElement("button");
+          deleteBtn.className = "history-delete-btn";
+          deleteBtn.title = "Delete run";
+          deleteBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          deleteBtn.addEventListener("click", (function(rid, evt) {
+            return function(e) {
+              e.stopPropagation();
+              deleteRun(rid);
+            };
+          })(run.runId));
+          item.appendChild(deleteBtn);
+
           item.addEventListener("click", (function(rid) { return function() { loadRun(rid); }; })(run.runId));
           list.appendChild(item);
         }
@@ -1293,6 +1346,23 @@
     function esc(str) { var div = document.createElement("div"); div.textContent = str || ""; return div.innerHTML; }
     function sanitizeId(id) { return id.replace(/[^a-zA-Z0-9_-]/g, "_"); }
     function scrollIntoViewIfNeeded(el) { if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+
+    function deleteRun(runId) {
+      if (!confirm("Delete this run?")) return;
+      fetch("/api/runs/" + runId, { method: "DELETE" })
+        .then(function(r) {
+          if (r.ok) {
+            if (currentRunId === runId) {
+              currentRunId = null;
+              resetPanels();
+            }
+            updateHistory();
+          }
+        })
+        .catch(function(err) {
+          console.error("Delete failed:", err);
+        });
+    }
 
     function formatTime(ts) {
       var d = new Date(ts);

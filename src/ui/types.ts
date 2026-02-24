@@ -30,4 +30,5 @@ export type SSEEvent =
   | { type: "task:ended"; runId: string; stepNumber: number; taskId: string; result: TaskResult; status: string }
   | { type: "step:ended"; runId: string; stepNumber: number }
   | { type: "run:complete"; runId: string; answer?: string; durationMs: number }
-  | { type: "run:error"; runId: string; error: string };
+  | { type: "run:error"; runId: string; error: string }
+  | { type: "run:deleted"; runId: string };
