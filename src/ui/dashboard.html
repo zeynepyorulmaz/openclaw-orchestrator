@@ -699,6 +699,63 @@
       border: 1px solid rgba(234, 179, 8, 0.15);
     }
 
+    /* ---- Streaming output ---- */
+    .task-stream {
+      margin-top: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: var(--bg);
+      border-radius: var(--radius);
+      padding: 36px 20px 20px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid var(--purple);
+      border-left: 3px solid var(--purple);
+      color: var(--text-secondary);
+      line-height: 1.65;
+      box-shadow: 0 0 12px var(--purple-glow);
+      position: relative;
+      animation: stream-pulse 2s ease-in-out infinite;
+    }
+
+    .task-stream::before {
+      content: 'STREAMING';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 4px 20px;
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--purple-light);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      background: var(--purple-glow);
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    .task-stream.stream-done {
+      border-color: var(--done);
+      border-left-color: var(--done);
+      box-shadow: none;
+      animation: none;
+    }
+
+    .task-stream.stream-done::before {
+      content: 'STREAMED';
+      color: #86efac;
+      background: rgba(34, 197, 94, 0.1);
+      border-bottom-color: rgba(34, 197, 94, 0.2);
+    }
+
+    @keyframes stream-pulse {
+      0%, 100% { box-shadow: 0 0 8px var(--purple-glow); }
+      50% { box-shadow: 0 0 16px var(--purple-glow-strong); }
+    }
+
     /* ---- Legend ---- */
     .legend {
       display: flex;
@@ -993,6 +1050,9 @@
         case "task:started":
           updateTaskStatus(event.stepNumber, event.taskId, "running");
           break;
+        case "task:chunk":
+          appendTaskChunk(event.taskId, event.content, event.done);
+          break;
         case "task:ended":
           updateTaskStatus(event.stepNumber, event.taskId, event.status, event.result);
           break;
@@ -1131,8 +1191,38 @@
       if (dot) dot.className = "task-status-dot " + status;
 
       if (result && (status === "done" || status === "failed")) {
+        // Hide streaming output if present
+        var streamEl = document.getElementById("task-stream-" + sanitizeId(taskId));
+        if (streamEl) streamEl.style.display = "none";
+
         var outputContainer = document.getElementById("task-output-container-" + sanitizeId(taskId));
         if (outputContainer && !outputContainer.hasChildNodes()) renderTaskResult(outputContainer, taskId, result);
+      }
+    }
+
+    function appendTaskChunk(taskId, content, done) {
+      var streamId = "task-stream-" + sanitizeId(taskId);
+      var streamEl = document.getElementById(streamId);
+
+      if (!streamEl) {
+        // Create streaming output element
+        var outputContainer = document.getElementById("task-output-container-" + sanitizeId(taskId));
+        if (!outputContainer) return;
+
+        streamEl = document.createElement("pre");
+        streamEl.className = "task-stream";
+        streamEl.id = streamId;
+        outputContainer.appendChild(streamEl);
+      }
+
+      if (content) {
+        streamEl.textContent += content;
+        // Auto-scroll to bottom
+        streamEl.scrollTop = streamEl.scrollHeight;
+      }
+
+      if (done) {
+        streamEl.classList.add("stream-done");
       }
     }
 

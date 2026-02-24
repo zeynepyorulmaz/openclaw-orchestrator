@@ -82,6 +82,7 @@ export type RunCallbacks = {
   onThinking?: (stepNumber: number) => void;
   onStepStart?: (stepNumber: number, taskIds: string[], tasks: Array<{ id: string; task: string; agent?: string }>) => void;
   onTaskStart?: (stepNumber: number, taskId: string) => void;
+  onTaskChunk?: (stepNumber: number, taskId: string, content: string, done: boolean) => void;
   onTaskEnd?: (stepNumber: number, taskId: string, result: TaskResult) => void;
   onStepEnd?: (stepNumber: number) => void;
   onFinish?: (answer: string) => void;
@@ -374,13 +375,23 @@ export class Orchestrator {
             return;
           }
 
+          const taskNode = {
+            id: task.id,
+            task: task.task,
+            dependsOn: [],
+            status: "running" as const,
+          };
+
           try {
-            const result = await agent.execute({
-              id: task.id,
-              task: task.task,
-              dependsOn: [],
-              status: "running",
-            });
+            let result;
+            // Use streaming if agent supports it and callback is provided
+            if (agent.executeStream && callbacks?.onTaskChunk) {
+              result = await agent.executeStream(taskNode, (chunk) => {
+                callbacks.onTaskChunk!(step.stepNumber, task.id, chunk.content, chunk.done);
+              });
+            } else {
+              result = await agent.execute(taskNode);
+            }
             task.result = result;
             task.status = result.status === "ok" ? "done" : "failed";
           } catch (err) {

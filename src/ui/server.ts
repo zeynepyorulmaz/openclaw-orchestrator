@@ -282,6 +282,9 @@ export class DashboardServer {
             if (task) task.status = "running";
             this.broadcastSSE({ type: "task:started", runId, stepNumber, taskId });
           },
+          onTaskChunk: (stepNumber, taskId, content, done) => {
+            this.broadcastSSE({ type: "task:chunk", runId, stepNumber, taskId, content, done });
+          },
           onTaskEnd: (stepNumber, taskId, taskResult) => {
             const step = run.steps.find((s) => s.stepNumber === stepNumber);
             const task = step?.tasks.find((t) => t.id === taskId);

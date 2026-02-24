@@ -43,7 +43,7 @@ export { GatewayRegistry } from "./gateway/registry.js";
 export type { GatewayConfig, GatewayHealth } from "./gateway/types.js";
 
 // Agents
-export type { AgentAdapter } from "./agents/adapter.js";
+export type { AgentAdapter, StreamCallback, StreamChunk } from "./agents/adapter.js";
 export { AgentRegistry } from "./agents/registry.js";
 export type { AgentHealth } from "./agents/registry.js";
 export { OpenClawAdapter } from "./agents/openclaw-adapter.js";
@@ -51,7 +51,7 @@ export type { OpenClawAdapterOptions } from "./agents/openclaw-adapter.js";
 export { HttpAdapter } from "./agents/http-adapter.js";
 export type { HttpAdapterOptions } from "./agents/http-adapter.js";
 export { FunctionAdapter } from "./agents/function-adapter.js";
-export type { AgentFunction, FunctionAdapterOptions } from "./agents/function-adapter.js";
+export type { AgentFunction, StreamingAgentFunction, FunctionAdapterOptions } from "./agents/function-adapter.js";
 
 // Types (kept for adapter compatibility)
 export type { TaskNode, TaskGraph, TaskResult, TaskStatus } from "./planner/types.js";
